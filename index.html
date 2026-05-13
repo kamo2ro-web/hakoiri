@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>はこいり末弟</title>
+<style>
+body{
+font-family:sans-serif;
+text-align:center;
+background:#f4f1e8;
+}
+
+h1{margin-top:20px}
+
+#board{
+position:relative;
+width:320px;
+height:400px;
+margin:20px auto;
+background:#d7b47d;
+border:8px solid #654321;
+border-radius:12px;
+}
+
+.cellgrid{
+position:absolute;
+inset:0;
+display:grid;
+grid-template-columns:repeat(4,1fr);
+grid-template-rows:repeat(5,1fr);
+pointer-events:none;
+}
+.cellgrid div{
+border:1px solid rgba(255,255,255,.25);
+}
+
+.piece{
+position:absolute;
+background-size:cover;
+background-position:center;
+border-radius:10px;
+box-shadow:0 3px 8px rgba(0,0,0,.25);
+cursor:pointer;
+transition:.15s;
+}
+
+.piece.selected{
+outline:4px solid #4da3ff;
+transform:scale(1.03);
+}
+
+#controls button{
+font-size:24px;
+width:60px;
+height:60px;
+margin:6px;
+}
+
+#msg{
+font-weight:bold;
+font-size:22px;
+margin-top:14px;
+color:#126f24;
+}
+</style>
+</head>
+<body>
+
+<h1>箱入り末弟</h1>
+<p>駒をクリックして動かしてね！</p>
+
+<div id="board">
+<div class="cellgrid" id="grid"></div>
+</div>
+
+<div id="controls">
+<div>
+<button onclick="moveSelected(0,-1)">↑</button>
+</div>
+<div>
+<button onclick="moveSelected(-1,0)">←</button>
+<button onclick="moveSelected(1,0)">→</button>
+</div>
+<div>
+<button onclick="moveSelected(0,1)">↓</button>
+</div>
+</div>
+
+<p id="moves">手数 0</p>
+<button onclick="resetGame()">リセット</button>
+<div id="msg"></div>
+
+<script>
+const CELL=80;
+let moves=0;
+let selected=null;
+let dragPiece=null;
+let startX=0;
+let startY=0;
+
+const moveSound=new Audio('move.mp3');
+const clearSound=new Audio('clear.mp3');
+
+for(let i=0;i<20;i++){
+ let c=document.createElement('div');
+ grid.appendChild(c);
+}
+
+// ↓81手版（伝統配置）画像差し替え
+let startPieces=[
+{id:'hero',x:1,y:0,w:2,h:2,img:'hero.png'},
+
+{id:'a',x:0,y:0,w:1,h:2,img:'guard1.png'},
+{id:'b',x:3,y:0,w:1,h:2,img:'guard2.png'},
+{id:'c',x:0,y:2,w:1,h:2,img:'guard3.png'},
+{id:'d',x:3,y:2,w:1,h:2,img:'guard4.png'},
+
+{id:'h1',x:1,y:2,w:2,h:1,img:'horizontal.png'},
+
+{id:'p1',x:0,y:4,w:1,h:1,img:'pawn1.png'},
+{id:'p2',x:1,y:3,w:1,h:1,img:'pawn2.png'},
+{id:'p3',x:2,y:3,w:1,h:1,img:'pawn3.png'},
+{id:'p4',x:3,y:4,w:1,h:1,img:'pawn4.png'}
+];
+
+let pieces;
+
+function clonePieces(){
+ return JSON.parse(JSON.stringify(startPieces));
+}
+
+function buildMap(){
+ let map=[...Array(5)].map(()=>Array(4).fill(null));
+ pieces.forEach(p=>{
+  for(let y=0;y<p.h;y++)
+   for(let x=0;x<p.w;x++)
+    map[p.y+y][p.x+x]=p.id;
+ });
+ return map;
+}
+
+function draw(){
+ document.querySelectorAll('.piece').forEach(e=>e.remove());
+
+ pieces.forEach(p=>{
+   let d=document.createElement('div');
+   d.className='piece'+(selected===p.id?' selected':'');
+   d.style.left=(p.x*CELL)+'px';
+   d.style.top=(p.y*CELL)+'px';
+   d.style.width=(p.w*CELL)+'px';
+   d.style.height=(p.h*CELL)+'px';
+   d.style.backgroundImage=`url(${p.img})`;
+
+   d.onclick=()=>{
+    selected=p.id;
+    draw();
+   }
+
+   d.addEventListener('touchstart',e=>startDrag(e,p.id));
+   d.addEventListener('mousedown',e=>startDrag(e,p.id));
+
+   board.appendChild(d);
+ });
+
+ document.getElementById('moves').textContent='手数 '+moves;
+
+ let hero=pieces.find(p=>p.id==='hero');
+ if(hero.x===1 && hero.y===3){
+   clearGame();
+ }
+}
+
+function startDrag(e,id){
+ selected=id;
+ dragPiece=id;
+
+ const point=e.touches?e.touches[0]:e;
+ startX=point.clientX;
+ startY=point.clientY;
+}
+
+window.addEventListener('mouseup',endDrag);
+window.addEventListener('touchend',endDrag);
+
+function endDrag(e){
+ if(!dragPiece)return;
+
+ const point=e.changedTouches?e.changedTouches[0]:e;
+ let dx=point.clientX-startX;
+ let dy=point.clientY-startY;
+
+ if(Math.abs(dx)>Math.abs(dy)){
+   if(dx>20) moveSelected(1,0);
+   if(dx<-20) moveSelected(-1,0);
+ }else{
+   if(dy>20) moveSelected(0,1);
+   if(dy<-20) moveSelected(0,-1);
+ }
+
+ dragPiece=null;
+}
+
+function canMove(piece,dx,dy){
+ let map=buildMap();
+
+ for(let yy=0;yy<piece.h;yy++){
+ for(let xx=0;xx<piece.w;xx++){
+ let nx=piece.x+xx+dx;
+ let ny=piece.y+yy+dy;
+
+ if(nx<0||ny<0||nx>=4||ny>=5) return false;
+
+ let hit=map[ny][nx];
+ if(hit && hit!==piece.id){
+   let own=
+   nx>=piece.x && nx<piece.x+piece.w &&
+   ny>=piece.y && ny<piece.y+piece.h;
+   if(!own)return false;
+ }
+ }
+ }
+ return true;
+}
+
+function moveSelected(dx,dy){
+ if(!selected) return;
+ let p=pieces.find(x=>x.id===selected);
+ if(canMove(p,dx,dy)){
+   p.x+=dx;
+   p.y+=dy;
+   moves++;
+
+   moveSound.currentTime=0;
+   moveSound.play();
+
+   draw();
+ }
+}
+
+function clearGame(){
+ clearSound.play();
+
+ let overlay=document.createElement('div');
+ overlay.id='clearOverlay';
+ overlay.style.position='fixed';
+ overlay.style.inset='0';
+ overlay.style.background='rgba(0,0,0,.85)';
+ overlay.style.display='flex';
+ overlay.style.flexDirection='column';
+ overlay.style.alignItems='center';
+ overlay.style.justifyContent='center';
+ overlay.style.zIndex='999';
+ overlay.style.color='white';
+ overlay.style.fontSize='32px';
+ overlay.style.cursor='pointer';
+
+ overlay.innerHTML=`
+ <div style="margin-bottom:20px">CLEAR!</div>
+ <img src="clear.png" style="max-width:90vw;max-height:70vh;border-radius:16px;box-shadow:0 0 30px rgba(255,255,255,.3)">
+ <div style="margin-top:20px;font-size:18px">タップでリセット</div>
+ `;
+
+ overlay.onclick=()=>{
+   overlay.remove();
+   resetGame();
+ }
+
+ document.body.appendChild(overlay);
+}
+
+function resetGame(){
+ pieces=clonePieces();
+ selected=null;
+ moves=0;
+ msg.textContent='';
+ draw();
+}
+
+window.addEventListener('keydown',e=>{
+if(e.key==='ArrowUp')moveSelected(0,-1);
+if(e.key==='ArrowDown')moveSelected(0,1);
+if(e.key==='ArrowLeft')moveSelected(-1,0);
+if(e.key==='ArrowRight')moveSelected(1,0);
+});
+
+resetGame();
+</script>
+
+</body>
+</html>
