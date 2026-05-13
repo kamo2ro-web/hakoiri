@@ -43,6 +43,11 @@ border-radius:10px;
 box-shadow:0 3px 8px rgba(0,0,0,.25);
 cursor:pointer;
 transition:.15s;
+
+touch-action:none;
+user-select:none;
+-webkit-user-select:none;
+
 }
 
 .piece.selected{
@@ -172,6 +177,9 @@ function draw(){
 }
 
 function startDrag(e,id){
+ 
+ e.preventDefault();
+ 
  selected=id;
  dragPiece=id;
 
@@ -276,6 +284,14 @@ function resetGame(){
  msg.textContent='';
  draw();
 }
+
+window.addEventListener('touchmove', e=>{
+ if(dragPiece){
+   e.preventDefault();
+ }
+},{passive:false});
+
+
 
 window.addEventListener('keydown',e=>{
 if(e.key==='ArrowUp')moveSelected(0,-1);
